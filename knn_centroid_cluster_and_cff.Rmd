@@ -1,0 +1,263 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+This notebook performs: - K-means clustering (4 clusters) for 4 core
+emotions (happy, sad, angry, neutral) -  Emotion labeling using
+scoring rules - Mood centroid computation - Popularity normalization -
+Genre weighting - Collab Filltering to recommend based on the centroid
+
+### Libraries + Dataset
+
+```{r}
+library(tidyverse)
+library(proxy)
+
+df <- read.csv("spotify_data.csv")
+# Drop duplicate songs (same track_name + same artist unique for cover case)
+df <- df %>% distinct(track_name, artists, .keep_all = TRUE)
+
+```
+
+```{r}
+# Replace NA with feature means
+df <- df %>% drop_na()
+```
+
+###### Selecting Audio Features
+```{r}
+emotion_feats <- df %>%
+  select(
+    danceability, energy, key, loudness, mode,
+    speechiness, acousticness, instrumentalness,
+    liveness, valence, tempo
+  )
+
+```
+
+```{r}
+# Scale the data
+scaled_feats <- scale(emotion_feats)
+```
+
+```{r}
+### 4. Apply feature weights (more important features get higher weight)
+weights <- c(
+  danceability = 2,
+  energy = 3,
+  key = 0.2,
+  loudness = 2,
+  mode = 0.2,
+  speechiness = 1,
+  acousticness = 2,
+  instrumentalness = 1,
+  liveness = 1,
+  valence = 3,
+  tempo = 0.5
+)
+
+weighted_feats <- scaled_feats %*% diag(weights)
+```
+
+
+
+
+
+###### K-Means
+```{r}
+set.seed(42)
+km <- kmeans(weighted_feats, centers = 4, nstart = 50)
+
+df$emotion_cluster <- km$cluster
+```
+
+####### Cluster Summary
+```{r}
+cluster_summary <- df %>%
+  group_by(emotion_cluster) %>%
+  summarise(
+    n = n(),
+    across(danceability:tempo, mean),
+    .groups = "drop"
+  )
+
+print(cluster_summary)
+```
+
+##### Score Each Cluster for 4 Emotions
+
+```{r}
+manual_map <- c(
+  "1" = "sad",
+  "2" = "angry",
+  "3" = "neutral",
+  "4" = "happy"   
+)
+
+df$emotion_label <- manual_map[as.character(df$emotion_cluster)]
+```
+
+### CF Similarity (Cosine similarity to mood centroid)
+```{r}
+compute_cf_similarity <- function(mood) {
+
+  idx <- which(df$emotion_label == mood)
+  mood_vec <- colMeans(weighted_feats[idx, , drop = FALSE])
+
+  mood_norm <- sqrt(sum(mood_vec^2))
+  feat_norms <- sqrt(rowSums(weighted_feats^2))
+
+  sims <- (weighted_feats %*% mood_vec) /
+          (feat_norms * mood_norm)
+
+  sims[is.na(sims)] <- 0
+  sims
+}
+```
+
+### Popularity normalization + random noise
+```{r}
+pop_norm <- (df$popularity - min(df$popularity)) /
+            (max(df$popularity) - min(df$popularity))
+
+random_noise <- function(n) runif(n, 0, 1)
+```
+
+```{r}
+df$genre <- df$track_genre
+```
+
+
+### FINAL RECOMMENDER (from the mood centroid, pick top k songs most similar, sort by popularity)
+
+```{r}
+recommend_mood <- function(mood, k = 20) {
+  
+  set.seed(NULL)  # randomness each run
+  
+  # 1. CF similarity for all songs
+  cf_sims <- compute_cf_similarity(mood)
+  df$cf_score <- cf_sims
+  
+  
+  # 2. Add row index so we can reference popularity later
+  df$orig_row <- 1:nrow(df)
+  
+  
+  # 3. Select top-k by CF FIRST
+  top_candidates <- df %>%
+    arrange(desc(cf_score)) %>%
+    slice(1:k)
+  
+  # 4. Popularity + random noise (tiny influence)
+  noise <- runif(k, 0, 1)
+  
+  pop_adj <- 0.85 * top_candidates$cf_score +
+             0.05 * pop_norm[top_candidates$orig_row] +
+             0.1 * noise
+  
+  
+  # 5. Assign final score
+  top_candidates$final_score <- pop_adj
+  
+  
+  # 6. Sort inside the top-k with slight bias
+  top_candidates %>%
+    arrange(desc(final_score)) %>%
+    select(track_name, artists, genre, emotion_label,
+           popularity, cf_score, final_score)
+}
+```
+
+
+##### Example Run
+
+```{r}
+sad_recs <- recommend_mood("sad", k = 15)
+head(sad_recs)
+```
+
+```{r}
+happy_recs <- recommend_mood("happy", k = 20)
+head(happy_recs)
+```
+
+```{r}
+neutral_recs <- recommend_mood("neutral", k = 20)
+head(neutral_recs)
+```
+
+```{r}
+angry_recs <- recommend_mood("angry", k = 20)
+head(angry_recs)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# PCA on weighted_feats (same matrix used for clustering)
+pca_res <- prcomp(weighted_feats, scale = FALSE)
+
+# Build PCA dataframe
+pca_df <- data.frame(
+  PC1 = pca_res$x[,1],
+  PC2 = pca_res$x[,2],
+  cluster = as.factor(df$emotion_cluster),
+  emotion = df$emotion_label   # uses your manual_map
+)
+
+# Cluster centroids for labels
+centroids <- pca_df %>%
+  group_by(cluster, emotion) %>%
+  summarise(
+    PC1 = mean(PC1),
+    PC2 = mean(PC2),
+    .groups = "drop"
+  )
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = emotion)) +
+  geom_point(alpha = 0.3, size = 1) +
+  scale_color_manual(values = c(
+    "happy"   = "#FFD700",
+    "sad"     = "#1f77b4",
+    "angry"   = "#d62728",
+    "neutral" = "#7f7f7f"
+  )) +
+  geom_label(
+    data = centroids,
+    aes(label = emotion),
+    color = "black",
+    fill = "white",
+    size = 4,
+    fontface = "bold",
+    label.r = unit(0.15, "lines")
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "PCA Scatterplot of Emotion Clusters",
+    subtitle = "Using manual_map = c('1'='sad','2'='angry','3'='neutral','4'='happy')",
+    x = "PC1",
+    y = "PC2",
+    color = "Emotion"
+  )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
