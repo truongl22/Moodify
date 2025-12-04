@@ -14,7 +14,6 @@ model = load_model()
 
 emotion_labels = ["Angry", "Happy", "Neutral", "Sad"]
 
-# Image preprocessing 
 def process_img_from_streamlit(uploaded_file):
     img = Image.open(uploaded_file).convert("L")  # grayscale
     img = img.resize((48, 48))
@@ -22,15 +21,12 @@ def process_img_from_streamlit(uploaded_file):
     x = np.expand_dims(x, axis=(0, -1))
     return x
 
-# Streamlit Page Setup
+# streamlit Setup
 st.set_page_config(page_title="Moodify Emotion Detector", layout="centered")
 
-# two tabs: Emotion Detection and About Project
+# two tabs: emotion detection and About. 
 tab1, tab2 = st.tabs(["Emotion Detection", "About Project"])
 
-# ===============================================================
-# TAB 1 — EMOTION DETECTION
-# ===============================================================
 with tab1:
     st.title("Emotion Detection Using CNN Model")
     st.write("Upload a face image for emotion recognition using the trained CNN classifier.")
@@ -49,35 +45,29 @@ with tab1:
 
         st.subheader(f"Predicted Emotion: **{emotion}**")
 
-        st.write("### Prediction Probabilities:")
+        st.write("Prediction Probabilities:")
         for label, p in zip(emotion_labels, probs):
             st.write(f"- **{label}**: {p:.4f}")
 
-# TAB 2 — ABOUT 
 with tab2:
     st.title("About Moodify")
     st.write("""
     **Moodify Emotion Detector**  
     This app uses a Convolutional Neural Network (CNN) trained on grayscale 48×48 images 
-    to classify facial emotion into the following categories:
+    to classify facial emotion into the following categories: Angry, Happy, Neutral, Sad  
 
-    - 😠 Angry  
-    - 🙂 Happy  
-    - 😐 Neutral  
-    - 😢 Sad  
-
-    **Project Summary:**  
+    **About**  
     - Built for DS 4420 (Machine Learning and Data Mining 2)  
     - Deployed using Streamlit Cloud  
     - Emotion classifier built in Python  
     - Recommender system built separately in R  
 
     **Technologies Used:**  
-    - TensorFlow / Keras  
-    - Streamlit  
-    - Python  
-    - NumPy  
-    - PIL  
+    - TensorFlow / Keras: Tensorflow 2.1.xx
+    - Streamlit 
+    - Python: python< 3.10.sxx
+    - NumPy: 1.2.3
+    - PIL: match up with tensorflow and numpy versions  
     """)
     st.write("---")
     st.write("Created by **Son Tran** and **Lam Truong** for DS 4420 Extra Credit.")
