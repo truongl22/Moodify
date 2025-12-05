@@ -2,6 +2,15 @@
 
 Song Recommendation based on Users’ Emotion Recognition System.
 
-## How to run 
-1. Open moodify.ipynb in Jupyter Notebook.
-2. Run all cells.
+by Son Tran and Lam Truong
+
+## Env
+
+To train tensorflow-gpu model locally, make sure your local env are:
+
+Python <= 3.10.x
+Numpy = 1.23.5
+Tensorflow = 2.10.0.0
+
+If you do not want to train the model from the beginning, just load the best_model.h5
+
