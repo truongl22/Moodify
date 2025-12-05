@@ -4,7 +4,7 @@ Song Recommendation based on Users’ Emotion Recognition System.
 
 by Son Tran and Lam Truong
 
-## Env
+## Environment
 
 To train tensorflow-gpu model locally, make sure your local env are:
 
